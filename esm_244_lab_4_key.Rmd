@@ -92,14 +92,6 @@ A 3.806e+03  5.029e+01   75.67  < 2e-16 ***
 B 9.233e-01  5.887e-02   15.68 2.33e-09 ***
 r 3.443e-01  3.219e-02   10.70 1.73e-07 ***
 
-Can also find confidence intervals by confint(ModelFit)
-
-```{r}
-
-cell_ci <- confint(cell_fit)
-
-```
-
 f. Create new variables for A, B and r
 
 ```{r}
@@ -169,6 +161,33 @@ cigs_panel <- Cigarette %>%
   
 ```
 
+### Look at it
+
+```{r}
+
+ggplot(Cigarette, aes(x = avgprs, y = packpc, group = state)) +
+  geom_point(aes(color = state)) +
+  geom_smooth(method = "lm", 
+              aes(color = state), 
+              size = 0.3, 
+              se = FALSE)
+
+ggplot(Cigarette, aes(x = year, y = packpc, group = state)) +
+  geom_point(aes(color = state)) +
+  geom_smooth(method = "lm",
+              aes(color = state),
+              size = 0.3,
+              se = FALSE)
+
+ggplot(Cigarette, aes(x = year, y = avgprs, group = state)) +
+  geom_point(aes(color = state)) +
+  geom_smooth(method = "lm",
+              aes(color = state),
+              size = 0.3,
+              se = FALSE)
+
+```
+
 ### Entity Fixed Effects Model
 
 Our research question is: How did the average price of cigarettes relate to the number of packs per person from 1985-1995 ON AVERAGE across all 50 states?
@@ -187,11 +206,9 @@ coeftest(cigs_model, vcov. = vcovHC(cigs_model, type = "HC1")) # coefficient is 
 
 ```
 
-
 But we know the number of packs per person has been going down across the United States for health reasons too, not just financial.  So we are going to use a time and entity fixed effects model.
 
 ### Time and Entity Fixed Effects Model
-
 
 ```{r et_cigs_model}
 
@@ -217,80 +234,3 @@ pFtest(et_cigs_model, cigs_model)
 ```
 
 **Conclusion:** Yes, we should include time fixed effects.  This makes sense, because we know that cigarette use is decreasing universally over time due to so many factors - health, societal pressure, etc.  We would expect time to substantially influence the number of packs per person.
-
-
-### Least Squares Dummy Variable Regression
-
-So we've discovered that yes, the number of packs per person decreases with price on average across the US.  But we're interested in knowing more about the state-by-state variation- are there some states were price increase changes habits more than others?  How does the number of packs per capita vary by state?
-
-We choose to look at the 5 states with the highest populations in the US from 1985-1995: California, Texas, New York, Florida, and Pennsylvania.
-
-We can then look at the coefficients of each state to see how the packs per capita vary within states. Also, when we use a time + entity fixed effects model we can also see how packs per capita vary within years (logically, we would expect a general trend of decreasing cigarette use over time).
-
-```{r data_setup2, message=FALSE}
-
-cigs_panel2 <- Cigarette %>% 
-                  select(state, year, packpc, avgprs) %>% 
-                  #only retaining the 4 columns we're interested in
-                  filter(state == "CA" | state == "TX"| state == "NY"| state == "FL"| state == "PA")
-                  #only retaining the 5 states we're interested in
-                  
-
-```
-
-```{r lsdv_cigs}
-
-# Entity Fixed Effects Only
-
-lsdv_cigs <- lm(packpc ~ avgprs + state, data = cigs_panel2) # Coefficient matches panel w/ model = "within". You can try this with the cigs_panel dataset if you want to double check the result
-
-lsdv_cigs #Shows us that every state has a higher number of packs per person than California 
-
-coeftest(lsdv_cigs, vcov. = vcovHC(lsdv_cigs, type = "HC1"))
-
-# Time and Entity Fixed Effects - we should use this given our pFtest() results from earlier
-
-te_lsdv_cigs <- lm(packpc ~ avgprs + state + factor(year), data = cigs_panel2) # Coefficient matches panel w/ model = "within" and effects = "twoways". You can try this with the cigs_panel dataset if you want to double check the result
-
-te_lsdv_cigs #Similar result to entity fixed effects model. We also see sensible coefficients for each year - each year has a lower number of packs per person relative to 1985, as expected.
-
-coeftest(te_lsdv_cigs, vcov. = vcovHC(te_lsdv_cigs, type = "HC1")) 
-
-```
-
-### Visualizing our data
-
-Below is one way to create a plot of average price vs. packs per capita, separated by state.
-
-First we need to add one extra argument to the dataset
-
-```{r plot, warning=FALSE, message=FALSE}
-
-cigs_panel_plot <- cigs_panel2 %>% 
-                      droplevels() # need to include this for plotting purposes- otherwise R will continue                                      to try to plot all 50 levels of the state factor, even though                                             we've only selected 5 values 
-
-levels(cigs_panel_plot$state) # check to make sure there are only 5 levels
-
-scatterplot(cigs_panel_plot$packpc ~ cigs_panel_plot$avgprs|cigs_panel_plot$state, 
-                boxplots=FALSE, 
-                xlab="Average Price", 
-                ylab="Packs Per Capita",
-                smooth=FALSE, 
-                legend.title = "State",
-                ylim = c(55, 130)) 
-
-
-# If you really wanted to do it for every state, you could...
-
-scatterplot(cigs_panel$packpc ~ cigs_panel$avgprs|cigs_panel$state, 
-                boxplots=FALSE, 
-                xlab="Average Price", 
-                ylab="Packs Per Capita",
-                smooth=FALSE, 
-                legend.title = "State",
-                legend.coords = "right",
-                legend.columns = 3,
-                ylim = c(40, 200),
-                xlim = c(80, 310)) 
-
-```
