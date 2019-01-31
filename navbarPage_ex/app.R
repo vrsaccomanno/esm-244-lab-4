@@ -9,7 +9,7 @@ ui <- fluidPage(
   # Application title
   titlePanel("244 Example: Old Faithful Geyser Data"),
   
-  navbarPage("Here's a main title!",
+   navbarPage("Here's a main title!",
              
              tabPanel("Summary",
                       h1("A header!"),
