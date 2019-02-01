@@ -1,0 +1,180 @@
+---
+title: "lab4"
+author: "Vienna Saccomanno"
+date: "1/31/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r}
+library(tidyverse)
+library(Ecdat)
+library(plm)
+library(lmtest)
+library(car) #for plotting
+```
+
+
+1. part 1: nonlinear least squares
+```{r get data}
+CellGrowth <- read_csv("CellGrowth.csv")
+
+#take a look
+ggplot(CellGrowth, aes(x=Time, y=CellCount))+
+  geom_point()
+
+#Find estimeats for R to converge by Gaus Neuton
+# N= A/ (1+Be^(-rt))
+#Estomate for K = 3700
+#N0 = 2000m what is b? ~0.85
+#Slope of natural log (y=e^rt -> ln(y) = rt) = r
+#Looking at the graph, time 0-4 was the exponential growth
+
+Bestimate<- (3700 - 2000)/2000
+
+
+#Now we are going to estimate r (the grwoth rate). Isolate the first 5 points
+
+lag_phase <- CellGrowth %>%
+  filter(Time<5) 
+
+#Make sure the log is linear
+ggplot(lag_phase, aes(x=Time, y=log(CellCount)))+
+  geom_point()
+
+lm(log(CellCount) ~Time, data=lag_phase)
+#r initial = 0.1035
+  
+```
+
+Find A, B and r using Gaus Neuton method for iterative convergence (non-linear least squares)
+
+Use the NLS function:
+```{r}
+
+#Input what model structure looks like (logistic regression here). R doesn't know what "A" is
+cell_fit<- nls(CellCount ~ A/(1+B*exp(-r*Time)),
+               start = list(A=3700, B=0.85, r=0.1035),
+               data=CellGrowth,
+               trace= TRUE)
+
+#values on the left are the least squares, they converge at 87187
+
+cell_fit
+#        A         B         r 
+#3805.8912    0.9233    0.3443 
+
+#Store the model coefficients
+A<-coef(cell_fit)[1]
+B<-coef(cell_fit[2])
+r<-coef(cell_fit)[3]
+
+
+#Create a new sequence of time values (time_seq)
+time_seq <- seq(0,20, length = 100)
+
+
+#plug that into model with the parameters A, B and r that we found:
+cell_pred <- A/(1+B*exp(-r*time_seq))
+
+pred_df <- data.frame(time_seq, cell_pred)
+
+
+ggplot(CellGrowth, aes(x = Time, y = CellCount)) + 
+  geom_point(colour = "blue", size = 3) + 
+  theme_bw() +
+  geom_line(data = pred_df, aes(x = time_seq, y = cell_pred), colour = "orange", size = 1) + 
+  xlab("Time (h)") +
+  ylab("Cell Count") +
+  ggtitle("Bacterial Growth")
+
+```
+
+
+Panel Regression - First Shot
+
+The Data:
+
+This data and example came from the Ecdat package in R: <https://cran.r-project.org/web/packages/Ecdat/Ecdat.pdf>
+
+All you have to do is install and load the "Ecdat" package. The Cigarette dataset contains information on the number of cigarette packs per person across all 50 United States from 1985-1995.  We will look at the following columns:
+
+- state (our "entity")...because we have time and entities = panel data
+- year (time variable)
+- packpc (the number of packs per capita- our Dependent Variable)
+- avgprs (average price during fiscal year, including sales taxes- our IV)
+
+What is the affect of price on purchases?
+
+```{r}
+#filtering what we are interested in
+
+cigs_panel<-Cigarette %>% 
+  select(state, year,packpc, avgprs)
+
+#Look at it: price and packs purchased by state
+ggplot(cigs_panel, aes(x=avgprs, y=packpc, group=state))+
+  geom_point(aes(color=state))+
+  geom_smooth(method = "lm", aes(color=state))
+#Generally, it looks like across states, average price is affecting purchases in a similar way. We are trying to take out state-specific unobserved variables
+
+ggplot(cigs_panel, aes(x=year, y=packpc, group = state))+
+  geom_point(aes(color=state))+
+  geom_smooth(method = "lm")
+
+
+
+```
+
+
+Entity fixed effect model:
+
+```{r}
+cigs_model<- plm(packpc~avgprs,
+                 data=cigs_panel,
+                 index=c("state", "year"), #time included to prove to plm() panel data
+                 model="within") #entity fixed effect model
+
+cigs_model
+
+#avgprs = per capita purcahse to decrease by .32 for ever dollar increase
+#-0.32545
+
+#Stat infor for robust std error
+coeftest(cigs_model, vcov. =vcovHC(cigs_model, type="HC1"))
+
+   #Estimate Std. Error t value  Pr(>|t|)    
+#avgprs -0.325448   0.012974 -25.085 < 2.2e-16 ***
+#This is a more conservative  estimate of SE
+```
+
+
+
+Add time fixed effects: changing over time, effecting entities in different ways
+```{r}
+et_cigs_model<- plm(packpc~avgprs,
+                 data=cigs_panel,
+                 index=c("state", "year"), #time included to prove to plm() panel data
+                 model="within",
+                 effect="twoways") #entity fixed effect model
+
+ #avgprs 
+#-0.38872 
+#Has including a time-fixed effect imporved my model? use pFtest
+
+pFtest(et_cigs_model, cigs_model)
+
+# p-value = 7.835e-10 reject the null that time does not improve model/ adding time helped explain these trends
+
+
+```
+
+
+
+
+
